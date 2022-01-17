@@ -187,6 +187,7 @@ public class MixinPlatformAgentFML extends MixinPlatformAgentAbstract {
                 if (this.clCoreModManager.getClassLoader().loadClass("net.minecraft.world.World") != null) {
                     MixinPlatformAgentAbstract.logger.debug(
                         "We're in a deobf environment, ignoring request to add {} to reparseable coremod collection", this.fileName);
+                    return;
                 }
             } catch (ClassNotFoundException ignored) { /* ignored */ }
             this.addReparseableJar();
