@@ -41,12 +41,8 @@ ext.commit = project.hasProperty("commit") ? commit : 'unknown'
 ext.asmVersion = project.hasProperty("asmVersion") ? asmVersion : '6.2'
 ext.legacyForgeAsmVersion = project.hasProperty("legacyForgeAsmVersion") ? asmVersion : '5.0.3'
 
-// True to do jar signing task
-ext.doSignJar = project.hasProperty("keyStorePath")
-
 java {
-    modularity.inferModulePath = false
-    toolchain.languageVersion = JavaLanguageVersion.of(ciSystem == 'unknown' ? 16 : 8)
+    toolchain.languageVersion = JavaLanguageVersion.of(8)
 }
 
 // Project repositories
@@ -75,10 +71,6 @@ configurations {
     fernflowerImplementation    .extendsFrom implementation
     launchwrapperImplementation .extendsFrom implementation
     agentImplementation         .extendsFrom implementation
-    modlauncherImplementation   .extendsFrom implementation
-    modlauncher9Implementation  .extendsFrom modlauncherImplementation
-    modularityImplementation    .extendsFrom modlauncher9Implementation
-    modularityCompileOnly       .extendsFrom compileOnly
 }
 
 sourceSets {
@@ -100,7 +92,6 @@ sourceSets {
         compileClasspath += main.output
         ext.languageVersion = 8
         ext.compatibility = '1.6'
-        ext.modularityExcluded = true
     }
     agent {
         compileClasspath += main.output
@@ -111,40 +102,15 @@ sourceSets {
         compileClasspath += main.output
         ext.languageVersion = 8
         ext.compatibility = '1.8'
-        ext.modularityExcluded = true
     }
     example {
         compileClasspath += main.output
         compileClasspath += ap.output
-        ext.modularityExcluded = true
-    }
-    test {
-        ext.modularityExcluded = true
     }
     launchwrapper {
         compileClasspath += main.output
         ext.languageVersion = 8
         ext.compatibility = '1.8'
-    }
-    modlauncher {
-        compileClasspath += main.output
-        ext.languageVersion = 8
-        ext.compatibility = '1.8'
-    }
-    modlauncher4 {
-        compileClasspath += main.output
-        compileClasspath += modlauncher.output
-        ext.languageVersion = 8
-        ext.compatibility = '1.8'
-    }
-    modlauncher9 {
-        ext.languageVersion = 16
-        compileClasspath += main.output
-        compileClasspath += modlauncher.output
-    }
-    modularity {
-        ext.languageVersion = 16
-        ext.modularityExcluded = true // don't add ourselves
     }
 }
 
@@ -178,34 +144,11 @@ dependencies {
     fernflowerImplementation 'org.jetbrains.java.decompiler:fernflower:sponge-SNAPSHOT'
 
     // LegacyLauncher service
-    launchwrapperImplementation ('net.minecraft:launchwrapper:1.11') {
+    launchwrapperImplementation ('net.minecraft:launchwrapper:1.12') {
         exclude module: 'lwjgl'
         exclude module: 'asm-debug-all'
         exclude module: 'jopt-simple'
     }
-    
-    modlauncherImplementation 'net.sf.jopt-simple:jopt-simple:5.0.4'
-    modlauncherCompileOnly 'org.apache.logging.log4j:log4j-core:2.0-beta9'
-    modlauncherImplementation ("cpw.mods:modlauncher:$legacyModlauncherVersion") {
-        exclude module: 'asm'
-        exclude module: 'asm-analysis'
-        exclude module: 'asm-commons'
-        exclude module: 'asm-tree'
-        exclude module: 'jopt-simple'
-    }
-    
-    modlauncher4Implementation ("cpw.mods:modlauncher:$legacyModlauncherVersion") {
-        exclude module: 'asm'
-        exclude module: 'asm-analysis'
-        exclude module: 'asm-commons'
-        exclude module: 'asm-tree'
-        exclude module: 'jopt-simple'
-    }
-    
-    modlauncher9Implementation ("cpw.mods:modlauncher:$modlauncherVersion") {
-        exclude module: 'jopt-simple'
-    }
-    modlauncher9Implementation 'cpw.mods:securejarhandler:0.9.+'
     
     // asm bridge
     bridgeImplementation 'org.apache.logging.log4j:log4j-core:2.0-beta9'
@@ -213,7 +156,6 @@ dependencies {
     
     legacyImplementation "org.ow2.asm:asm-tree:$asmVersion"
     
-    modularityCompileOnly 'org.apache.logging.log4j:log4j-core:2.11.2'
 }
 
 javadoc {
@@ -264,7 +206,7 @@ eclipse {
     }
     
     // Build service task outputs for test projects
-    autoBuildTasks compileModlauncher4Java, compileModlauncher9Java, compileLaunchwrapperJava
+    autoBuildTasks compileLaunchwrapperJava
 }
 
 // Filter, process, and include resources
@@ -308,8 +250,6 @@ tasks.withType(JavaCompile) {
     options.encoding = 'utf8'
 }
 
-def modularityInputs = objects.fileCollection()
-
 project.sourceSets.each { set -> {
     if (set.ext.has("languageVersion")) {
         project.tasks[set.compileJavaTaskName].javaCompiler = javaToolchains.compilerFor {
@@ -320,24 +260,7 @@ project.sourceSets.each { set -> {
         project.tasks[set.compileJavaTaskName].sourceCompatibility = set.ext.compatibility
         project.tasks[set.compileJavaTaskName].targetCompatibility = set.ext.compatibility
     }
-    def modularityExcluded = set.ext.has("modularityExcluded") && set.ext.modularityExcluded
-    if (!modularityExcluded) {
-        project.sourceSets.modularity {
-            compileClasspath += set.output
-        }
-        modularityInputs.from set.output
-    }
 }}
-
-compileModularityJava {
-    inputs.files(modularityInputs)
-    doFirst {
-        options.compilerArgs = [
-            '--module-path', classpath.asPath,
-            '--patch-module', "org.spongepowered.mixin=${modularityInputs.collect { it.absolutePath }.join(File.pathSeparator)}"
-        ]
-    }
-}
 
 if (JavaVersion.current().isJava8Compatible()) {
     tasks.withType(Javadoc) {
@@ -365,11 +288,6 @@ task stagingJar(type: ShadowJar) {
         "Can-Redefine-Classes": true,
         "Can-Retransform-Classes": true
     )
-
-    if (project.doSignJar) {
-        classifier = 'unsigned'
-    }
-    
     mergeServiceFiles()
 }
 
@@ -383,32 +301,6 @@ shadowJar  {
 }
 build.dependsOn(shadowJar)
 
-if (project.doSignJar) {
-    // Define signjar task    
-    task signJar() {
-        inputs.files(stagingJar.outputs)
-        outputs.files stagingJar.outputs.files.collect {
-            new File(it.parent, it.name.replace('-unsigned', ''))
-        }
-        doLast {
-            stagingJar.outputs.files.each {
-                ant.signjar(
-                    alias: project.keyStoreCert,
-                    jar: it,
-                    signedJar: new File(it.parent, it.name.replace('-unsigned', '')),
-                    keystore: project.keyStorePath,
-                    storepass: project.keyStoreSecret,
-                    keypass: project.keyStoreSecret,
-                    tsaurl: project.timestampAuthority,
-                    preservelastmodified: 'true',
-                    verbose: true
-                )
-            }
-        }
-    }
-    build.dependsOn(signJar)
-}
-
 // Run this task instead of build to generate a timestamped shadow jar (for dev)
 task timestamp(type: Jar, dependsOn: build) {
     if (gradle.startParameter.taskNames.contains(name)) {
@@ -417,7 +309,7 @@ task timestamp(type: Jar, dependsOn: build) {
 }
 
 task sourceJar(type: Jar) {
-    sourceSets.findAll { it.name != 'modularity' }.each {
+    sourceSets.each {
         from it.java
         from it.resources
     }
@@ -431,11 +323,7 @@ task javadocJar(type: Jar, dependsOn: javadoc) {
 }
 
 artifacts {
-    if (project.doSignJar) {
-        archives signJar.outputs.files[0]
-    } else {
-        archives stagingJar
-    }
+    archives stagingJar
     archives sourceJar
     archives javadocJar
     archives shadowJar
@@ -445,17 +333,17 @@ ext.mavenPom = {
     name = project.archivesBaseName
     packaging = project.packaging
     description = project.projectName
-    url = 'http://www.spongepowered.org/'
+    url = 'https://github.com/GTNewHorizons/SpongePoweredMixin/'
 
     scm {
         url = 'https://github.com/SpongePowered/Mixin'
-        connection = 'scm:git:git://github.com/SpongePowered/Mixin.git'
-        developerConnection = 'scm:git:git@github.com:SpongePowered/Mixin.git'
+        connection = 'scm:git@github.com:GTNewHorizons/SpongePoweredMixin.git'
+        developerConnection = 'scm:git@github.com:GTNewHorizons/SpongePoweredMixin.git'
     }
 
     issueManagement {
         system = 'GitHub Issues'
-        url = 'https://github.com/SpongePowered/Mixin/issues'
+        url = 'https://github.com/GTNewHorizons/SpongePoweredMixin/issues'
     }
 
     licenses {
@@ -475,11 +363,7 @@ publishing {
             version = project.version
             artifactId = project.archivesBaseName
 
-            if (project.doSignJar) {
-                artifact signJar.outputs.files[0]
-            } else {
-                artifact stagingJar
-            }
+            artifact stagingJar
             artifact sourceJar
             artifact javadocJar
             artifact shadowJar
@@ -487,32 +371,11 @@ publishing {
     }
     
     repositories {
-        if (buildType == 'RELEASE') {
-            if (project.hasProperty("releaseRepo")) {
                 maven {
+            url = "http://jenkins.usrv.eu:8081/nexus/content/repositories/releases"
                     credentials {
-                        username = project.releaseRepoUsername
-                        password = project.releaseRepoPassword
-                    }
-                    url project.releaseRepo
-                }
-            }
-            if (project.hasProperty("spongeReleaseRepo")) {
-                maven {
-                    credentials {
-                        username = project.spongeUsername
-                        password = project.spongePassword
-                    }
-                    url project.spongeReleaseRepo
-                }
-            }
-        } else if (project.hasProperty("spongeSnapshotRepo")) {
-            maven {
-                credentials {
-                    username = project.spongeUsername
-                    password = project.spongePassword
-                }
-                url project.spongeSnapshotRepo
+                username = System.getenv("MAVEN_USER") ?: "NONE"
+                password = System.getenv("MAVEN_PASSWORD") ?: "NONE"
             }
         }
     }
