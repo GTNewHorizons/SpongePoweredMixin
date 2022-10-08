@@ -371,12 +371,14 @@ publishing {
     }
     
     repositories {
-                maven {
+        maven {
+            allowInsecureProtocol = true
             url = "http://jenkins.usrv.eu:8081/nexus/content/repositories/releases"
-                    credentials {
+            credentials {
                 username = System.getenv("MAVEN_USER") ?: "NONE"
                 password = System.getenv("MAVEN_PASSWORD") ?: "NONE"
             }
+            
         }
     }
 }
